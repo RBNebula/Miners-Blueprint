@@ -1,0 +1,14 @@
+0.1.1
+- Initial release as Miner's Blueprint.
+- Added 3D selection flow:
+  - Key 1 sets start point from looked object/hit position.
+  - Key 2 sets end point and builds a green world-space selection box.
+- Added optional debug window (off by default) listing objects in current selection and clipboard counts.
+- Added clipboard copy/paste:
+  - Key 3 copies placed building objects in selection.
+  - Key 4 pastes copied objects relative to player position.
+- Added variant-aware paste support.
+- Added inventory gate on paste:
+  - Requires matching building items (ToolBuilder stacks) in inventory.
+  - Blocks paste if missing items and shows exact missing counts popup.
+  - Consumes required items from inventory when paste succeeds.

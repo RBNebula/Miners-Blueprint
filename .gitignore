@@ -1,0 +1,12 @@
+# Build output
+[Bb]in/
+[Oo]bj/
+
+# User/IDE files
+*.user
+*.suo
+*.cache
+*.tmp
+
+# Local branding/source assets not for release
+Branding/
