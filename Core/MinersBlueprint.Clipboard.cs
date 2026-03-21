@@ -18,48 +18,8 @@ public sealed partial class MinersBlueprint
 
     private void CopySelection()
     {
-        if (!_hasPointA || !_hasPointB)
+        if (!TryCreateClipboardFromSelection("Copy", out var clipboard))
         {
-            _toasts.Push("Set both selection points first.", ToastType.Warning);
-            return;
-        }
-
-        RefreshSelection();
-        if (_selectionObjects.Count == 0)
-        {
-            _toasts.Push("No building objects found in selection.", ToastType.Warning);
-            return;
-        }
-
-        var player = UnityEngine.Object.FindAnyObjectByType<PlayerController>();
-        if (player == null)
-        {
-            _toasts.Push("Player not found; cannot copy.", ToastType.Warning);
-            return;
-        }
-        var copyAnchor = SnapPasteAnchor(player.transform.position);
-
-        var clipboard = new ClipboardData();
-        for (var i = 0; i < _selectionObjects.Count; i++)
-        {
-            var obj = _selectionObjects[i];
-            if (obj == null || obj.Definition == null || obj.IsGhost) continue;
-
-            clipboard.Entries.Add(new ClipboardEntry
-            {
-                SavableObjectID = obj.SavableObjectID,
-                RequiredSavableObjectID = ResolveRequiredSavableId(obj),
-                RelativeOffset = obj.transform.position - copyAnchor,
-                Rotation = obj.transform.rotation,
-                SupportsEnabled = obj.GetBuildingSupportsEnabled(),
-                CustomData = obj.GetCustomSaveData() ?? string.Empty,
-                Label = BuildObjectLabel(obj)
-            });
-        }
-
-        if (clipboard.Entries.Count == 0)
-        {
-            _toasts.Push("Selection contains no valid copy targets.", ToastType.Warning);
             return;
         }
 
@@ -67,6 +27,7 @@ public sealed partial class MinersBlueprint
         _hasPointA = false;
         _hasPointB = false;
         _selectionObjects.Clear();
+        EnsureSelectionHighlightBoxCount(0);
         if (_selectionRoot != null && _selectionRoot.activeSelf)
         {
             _selectionRoot.SetActive(false);
@@ -75,84 +36,311 @@ public sealed partial class MinersBlueprint
         {
             RebuildGhostPreviewNow();
         }
-        _toasts.Push($"Copied {clipboard.Entries.Count} objects.", ToastType.Success);
+        Notify($"Copied {clipboard.Entries.Count} objects.", NotificationLevel.Success, title: "Copy");
+    }
+
+    private void CutSelection()
+    {
+        if (!TryCreateClipboardFromSelection("Cut", out var clipboard))
+        {
+            return;
+        }
+
+        var removedCount = 0;
+        var skippedCount = 0;
+        var undoTransaction = new UndoTransaction { BuildMode = _buildMode };
+        var cutClipboard = new ClipboardData
+        {
+            CopyAnchor = clipboard.CopyAnchor,
+            PlayerPosition = clipboard.PlayerPosition
+        };
+
+        for (var i = 0; i < _selectionObjects.Count; i++)
+        {
+            var selected = _selectionObjects[i];
+            if (selected == null || selected.Component == null || selected.Saveable == null)
+            {
+                continue;
+            }
+
+            var snapshot = BuildUndoSnapshot(selected);
+            if (snapshot == null)
+            {
+                skippedCount++;
+                continue;
+            }
+
+            if (!TryCreateClipboardEntry(selected, clipboard.CopyAnchor, out var entry))
+            {
+                skippedCount++;
+                continue;
+            }
+
+            var removed = _buildMode == BuildMode.Unlimited
+                ? RemoveSelectedObjectUnlimited(selected)
+                : TryReturnSelectedObjectToInventory(selected);
+            if (!removed)
+            {
+                skippedCount++;
+                continue;
+            }
+
+            var instanceId = selected.Component.GetInstanceID();
+            if (undoTransaction.RemovedInstanceIds.Add(instanceId))
+            {
+                undoTransaction.RemovedObjects.Add(snapshot);
+            }
+
+            cutClipboard.Entries.Add(entry);
+            removedCount++;
+        }
+
+        if (removedCount <= 0)
+        {
+            Notify(_buildMode == BuildMode.Unlimited
+                ? "No objects were cut from the selection."
+                : "No objects were cut. Items may be unsupported for inventory return or inventory may be full.",
+                NotificationLevel.Warning, 5f, "Cut", publishToChat: true);
+            return;
+        }
+
+        _clipboard = cutClipboard;
+        PushUndoTransaction(undoTransaction);
+        _hasPointA = false;
+        _hasPointB = false;
+        _selectionObjects.Clear();
+        EnsureSelectionHighlightBoxCount(0);
+        if (_selectionRoot != null && _selectionRoot.activeSelf)
+        {
+            _selectionRoot.SetActive(false);
+        }
+        if (_ghostPreviewVisible)
+        {
+            RebuildGhostPreviewNow();
+        }
+
+        Notify($"Cut {removedCount} object(s) to the clipboard.", NotificationLevel.Success, 4.2f, "Cut", publishToChat: true);
+        if (_buildMode == BuildMode.Normal && skippedCount > 0)
+        {
+            Notify($"Skipped {skippedCount} object(s) that could not be returned to inventory.", NotificationLevel.Warning, 5f, "Cut", publishToChat: true);
+        }
+        else if (_buildMode == BuildMode.Unlimited && skippedCount > 0)
+        {
+            Notify($"Skipped {skippedCount} object(s) due to invalid save/copy data.", NotificationLevel.Warning, 5f, "Cut", publishToChat: true);
+        }
     }
 
 
     private void PasteClipboard()
     {
-        if (_clipboard == null || _clipboard.Entries.Count == 0)
+        if (_activeLayeredPasteJob != null)
         {
-            _toasts.Push("Clipboard is empty. Copy first.", ToastType.Warning);
+            Notify("Paste is already in progress.", NotificationLevel.Warning, 3.8f, "Paste", publishToChat: true);
             return;
         }
 
+        if (_clipboard == null || _clipboard.Entries.Count == 0)
+        {
+            Notify("Clipboard is empty. Copy first.", NotificationLevel.Warning, title: "Paste");
+            return;
+        }
+
+        var confirmFromGhost = _ghostPreviewVisible;
         Vector3 pasteAnchor;
-        if (_ghostPreviewVisible)
+        if (confirmFromGhost)
         {
             pasteAnchor = _ghostPreviewAnchor;
-            HideGhostPreview();
         }
         else
         {
             var player = UnityEngine.Object.FindAnyObjectByType<PlayerController>();
             if (player == null)
             {
-                _toasts.Push("Player not found; cannot paste.", ToastType.Warning);
+                Notify("Player not found; cannot paste.", NotificationLevel.Warning, title: "Paste");
                 return;
             }
             pasteAnchor = SnapPasteAnchor(player.transform.position);
         }
 
         var inventory = UnityEngine.Object.FindAnyObjectByType<PlayerInventory>();
-        if (inventory == null)
+        var requiresInventory = _buildMode == BuildMode.Normal;
+        if (requiresInventory && inventory == null)
         {
-            _toasts.Push("Inventory not found; cannot paste.", ToastType.Warning);
+            Notify("Inventory not found; cannot paste.", NotificationLevel.Warning, title: "Paste");
             return;
         }
 
-        var required = BuildRequirements(_clipboard.Entries);
-        var stacks = BuildToolStacks(inventory, out var available);
-        var missing = BuildMissing(required, available);
-        if (missing.Count > 0)
+        Dictionary<SavableObjectID, int>? required = null;
+        List<ToolStack>? stacks = null;
+        if (requiresInventory)
         {
-            ShowMissingItemsPopup(missing);
-            _toasts.Push("Paste blocked: missing inventory items.", ToastType.Warning);
-            return;
+            required = BuildRequirements(_clipboard.Entries);
+            stacks = BuildToolStacks(inventory!, out var available);
+            var missing = BuildMissing(required, available);
+            if (missing.Count > 0)
+            {
+                ShowMissingItemsPopup(missing);
+                return;
+            }
         }
 
         var saving = Singleton<SavingLoadingManager>.Instance;
         if (saving == null)
         {
-            _toasts.Push("SavingLoadingManager missing; cannot spawn prefabs.", ToastType.Warning);
+            Notify("SavingLoadingManager missing; cannot spawn prefabs.", NotificationLevel.Warning, title: "Paste");
             return;
         }
 
-        var spawned = 0;
-        var blocked = 0;
-        var spawnFailed = 0;
-        var replaced = 0;
-        var protectedPlacedIds = new HashSet<int>();
-        var consumedOnSuccess = new Dictionary<SavableObjectID, int>();
+        if (confirmFromGhost)
+        {
+            HideGhostPreview(showMessage: false);
+        }
+
+        var job = CreateLayeredPasteJob(saving, inventory, stacks, requiresInventory, pasteAnchor);
+        if (job == null)
+        {
+            Notify("Nothing valid to paste.", NotificationLevel.Warning, 4f, "Paste", publishToChat: true);
+            return;
+        }
+
         _reportedInventoryFullOnReplace = false;
+        _activeLayeredPasteJob = job;
+        if (job.Layers.Count > 1)
+        {
+            Notify($"Starting staged paste on {job.SliceAxisLabel} ({job.Layers.Count} slices at {LayeredPasteDelaySeconds:0.0}s each).", NotificationLevel.Info, 3.2f, "Paste");
+        }
+        ProcessNextPasteLayer(forceImmediate: true);
+    }
+
+
+    private LayeredPasteJob? CreateLayeredPasteJob(
+        SavingLoadingManager saving,
+        PlayerInventory? inventory,
+        List<ToolStack>? stacks,
+        bool requiresInventory,
+        Vector3 pasteAnchor)
+    {
+        if (_clipboard == null || _clipboard.Entries.Count == 0)
+        {
+            return null;
+        }
+
+        var entriesWithCells = new List<(ClipboardEntry Entry, Vector3 TargetPos, Vector3Int Cell)>(_clipboard.Entries.Count);
+        var xSlices = new HashSet<int>();
+        var ySlices = new HashSet<int>();
+        var zSlices = new HashSet<int>();
         for (var i = 0; i < _clipboard.Entries.Count; i++)
         {
             var entry = _clipboard.Entries[i];
             var targetPos = pasteAnchor + entry.RelativeOffset;
-            var clearResult = TryClearOccupiedTarget(saving, entry, targetPos, protectedPlacedIds);
+            var cell = PositionToPlacementCell(targetPos);
+            entriesWithCells.Add((entry, targetPos, cell));
+            xSlices.Add(cell.x);
+            ySlices.Add(cell.y);
+            zSlices.Add(cell.z);
+        }
+
+        if (entriesWithCells.Count == 0)
+        {
+            return null;
+        }
+
+        var sliceAxis = 'Y';
+        var sliceAxisLabel = "Y";
+        var sliceCount = ySlices.Count;
+        if (xSlices.Count > sliceCount)
+        {
+            sliceAxis = 'X';
+            sliceAxisLabel = "X";
+            sliceCount = xSlices.Count;
+        }
+        if (zSlices.Count > sliceCount)
+        {
+            sliceAxis = 'Z';
+            sliceAxisLabel = "Z";
+        }
+
+        var layersBySlice = new SortedDictionary<int, LayeredPasteLayer>();
+        for (var i = 0; i < entriesWithCells.Count; i++)
+        {
+            var item = entriesWithCells[i];
+            var sliceCoordinate = GetSliceCoordinate(item.Cell, sliceAxis);
+            if (!layersBySlice.TryGetValue(sliceCoordinate, out var layer))
+            {
+                layer = new LayeredPasteLayer { SliceCoordinate = sliceCoordinate };
+                layersBySlice[sliceCoordinate] = layer;
+            }
+
+            layer.Entries.Add(new LayeredPasteEntry
+            {
+                Entry = item.Entry,
+                TargetPos = item.TargetPos
+            });
+        }
+
+        if (layersBySlice.Count == 0)
+        {
+            return null;
+        }
+
+        var job = new LayeredPasteJob
+        {
+            Saving = saving,
+            Inventory = inventory,
+            Stacks = stacks,
+            RequiresInventory = requiresInventory,
+            SliceAxis = sliceAxis,
+            SliceAxisLabel = sliceAxisLabel,
+            NextLayerAtTime = Time.unscaledTime,
+        };
+        job.UndoTransaction.BuildMode = _buildMode;
+        foreach (var layer in layersBySlice.Values)
+        {
+            job.Layers.Add(layer);
+        }
+        return job;
+    }
+
+
+    private void ProcessNextPasteLayer(bool forceImmediate = false)
+    {
+        if (_activeLayeredPasteJob == null)
+        {
+            return;
+        }
+
+        var now = Time.unscaledTime;
+        if (!forceImmediate && now < _activeLayeredPasteJob.NextLayerAtTime)
+        {
+            return;
+        }
+
+        if (_activeLayeredPasteJob.NextLayerIndex >= _activeLayeredPasteJob.Layers.Count)
+        {
+            FinishLayeredPaste();
+            return;
+        }
+
+        var job = _activeLayeredPasteJob;
+        var layer = job.Layers[job.NextLayerIndex];
+        for (var i = 0; i < layer.Entries.Count; i++)
+        {
+            var item = layer.Entries[i];
+            var entry = item.Entry;
+            var clearResult = TryClearOccupiedTarget(job.Saving, entry, item.TargetPos, job.ProtectedPlacedIds, job.UndoTransaction);
             if (clearResult == OccupiedClearResult.Failed)
             {
-                blocked++;
+                job.Blocked++;
                 continue;
             }
             if (clearResult == OccupiedClearResult.Cleared)
             {
-                replaced++;
+                job.Replaced++;
             }
 
-            if (!TrySpawnClipboardEntry(saving, entry, pasteAnchor, out var go))
+            if (!TrySpawnClipboardEntryAtPosition(job.Saving, entry, item.TargetPos, out var go))
             {
-                spawnFailed++;
+                job.SpawnFailed++;
                 continue;
             }
 
@@ -164,9 +352,10 @@ public sealed partial class MinersBlueprint
                     building.LoadFromSave(entry.CustomData);
                 }
                 building.UpdateSupportsAbove(isDestroyingThis: false);
-                protectedPlacedIds.Add(building.GetInstanceID());
-                AddConsumedRequirement(consumedOnSuccess, entry);
-                spawned++;
+                job.ProtectedPlacedIds.Add(building.GetInstanceID());
+                job.UndoTransaction.PlacedObjects.Add(building.gameObject);
+                AddConsumedRequirement(job.ConsumedOnSuccess, entry);
+                job.Spawned++;
                 continue;
             }
 
@@ -176,35 +365,66 @@ public sealed partial class MinersBlueprint
                 {
                     saveable.LoadFromSave(entry.CustomData);
                 }
-                AddConsumedRequirement(consumedOnSuccess, entry);
-                spawned++;
+                job.UndoTransaction.PlacedObjects.Add(go);
+                AddConsumedRequirement(job.ConsumedOnSuccess, entry);
+                job.Spawned++;
                 continue;
             }
 
             Destroy(go);
-            spawnFailed++;
+            job.SpawnFailed++;
         }
 
-        if (consumedOnSuccess.Count > 0)
+        job.NextLayerIndex++;
+        if (job.NextLayerIndex >= job.Layers.Count)
         {
-            ConsumeRequirements(inventory, consumedOnSuccess, stacks);
+            FinishLayeredPaste();
+            return;
         }
 
-        if (spawned > 0)
+        job.NextLayerAtTime = now + LayeredPasteDelaySeconds;
+        Notify($"Placed slice {job.NextLayerIndex} of {job.Layers.Count} on {job.SliceAxisLabel}.", NotificationLevel.Info, 1.6f, "Paste");
+    }
+
+
+    private void FinishLayeredPaste()
+    {
+        if (_activeLayeredPasteJob == null)
         {
-            _toasts.Push($"Pasted {spawned} objects.", ToastType.Success);
+            return;
         }
-        if (replaced > 0)
+
+        var job = _activeLayeredPasteJob;
+        _activeLayeredPasteJob = null;
+
+        if (job.RequiresInventory && job.ConsumedOnSuccess.Count > 0 && job.Inventory != null && job.Stacks != null)
         {
-            _toasts.Push($"Replaced {replaced} existing objects (refunded to inventory).", ToastType.Success, duration: 3.6f);
+            ConsumeRequirements(job.Inventory, job.ConsumedOnSuccess, job.Stacks);
         }
-        if (blocked > 0)
+
+        if (job.UndoTransaction.PlacedObjects.Count > 0 || job.UndoTransaction.RemovedObjects.Count > 0)
         {
-            _toasts.Push($"Skipped {blocked} objects (blocked by nearby objects).", ToastType.Warning);
+            PushUndoTransaction(job.UndoTransaction);
         }
-        if (spawnFailed > 0)
+
+        if (job.Spawned > 0)
         {
-            _toasts.Push($"Skipped {spawnFailed} objects (missing prefab/component).", ToastType.Warning);
+            Notify($"Pasted {job.Spawned} objects across {job.Layers.Count} {GetSliceLabel(job.Layers.Count)} on {job.SliceAxisLabel}.", NotificationLevel.Success, title: "Paste");
+        }
+        if (job.Replaced > 0)
+        {
+            var replaceMessage = job.UndoTransaction.BuildMode == BuildMode.Unlimited
+                ? $"Replaced {job.Replaced} existing objects."
+                : $"Replaced {job.Replaced} existing objects (refunded to inventory).";
+            Notify(replaceMessage, NotificationLevel.Success, 3.6f, "Paste");
+        }
+        if (job.Blocked > 0)
+        {
+            Notify($"Skipped {job.Blocked} objects (blocked by nearby objects).", NotificationLevel.Warning, title: "Paste");
+        }
+        if (job.SpawnFailed > 0)
+        {
+            Notify($"Skipped {job.SpawnFailed} objects (missing prefab/component or variant mismatch).", NotificationLevel.Warning, title: "Paste");
         }
     }
 
@@ -325,16 +545,8 @@ public sealed partial class MinersBlueprint
             .ToArray();
 
         var body = "Missing items:\n" + string.Join("\n", lines);
-        ShowPopup("Paste Blocked", body, 8f);
-        _toasts.Push(body, ToastType.Warning, duration: 4.5f);
-    }
-
-
-    private void ShowPopup(string title, string body, float duration)
-    {
-        _popupTitle = title ?? string.Empty;
-        _popupBody = body ?? string.Empty;
-        _popupUntilTime = Time.unscaledTime + Mathf.Max(1.5f, duration);
+        ShowPopup("Paste Blocked", body, 8f, NotificationLevel.Warning);
+        Logger.LogWarning($"{ModInfo.LOG_PREFIX} {body.Replace('\n', ' ')}");
     }
 
 
@@ -363,11 +575,159 @@ public sealed partial class MinersBlueprint
         return obj.SavableObjectID;
     }
 
+    private bool TryCreateClipboardFromSelection(string actionTitle, out ClipboardData clipboard)
+    {
+        clipboard = null!;
+        if (!_hasPointA || !_hasPointB)
+        {
+            Notify("Set both selection points first.", NotificationLevel.Warning, title: actionTitle);
+            return false;
+        }
+
+        RefreshSelection();
+        if (_selectionObjects.Count == 0)
+        {
+            Notify("No saveable world objects found in selection.", NotificationLevel.Warning, title: actionTitle);
+            return false;
+        }
+
+        var player = UnityEngine.Object.FindAnyObjectByType<PlayerController>();
+        if (player == null)
+        {
+            Notify($"Player not found; cannot {actionTitle.ToLowerInvariant()}.", NotificationLevel.Warning, title: actionTitle);
+            return false;
+        }
+
+        var copyAnchor = SnapPasteAnchor(player.transform.position);
+        clipboard = new ClipboardData
+        {
+            CopyAnchor = copyAnchor,
+            PlayerPosition = player.transform.position
+        };
+
+        for (var i = 0; i < _selectionObjects.Count; i++)
+        {
+            if (TryCreateClipboardEntry(_selectionObjects[i], copyAnchor, out var entry))
+            {
+                clipboard.Entries.Add(entry);
+            }
+        }
+
+        if (clipboard.Entries.Count == 0)
+        {
+            Notify("Selection contains no valid copy targets.", NotificationLevel.Warning, title: actionTitle);
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool TryCreateClipboardEntry(SelectedWorldObject selected, Vector3 copyAnchor, out ClipboardEntry entry)
+    {
+        entry = null!;
+        if (selected == null || selected.Component == null || selected.Saveable == null)
+        {
+            return false;
+        }
+
+        var savableId = selected.Saveable.GetSavableObjectID();
+        if (savableId == SavableObjectID.INVALID)
+        {
+            return false;
+        }
+
+        var building = selected.Building;
+        entry = new ClipboardEntry
+        {
+            SavableObjectID = savableId,
+            RequiredSavableObjectID = building != null ? ResolveRequiredSavableId(building) : savableId,
+            RelativeOffset = selected.Component.transform.position - copyAnchor,
+            Rotation = selected.Component.transform.rotation,
+            SupportsEnabled = building != null && building.GetBuildingSupportsEnabled(),
+            CustomData = selected.Saveable.GetCustomSaveData() ?? string.Empty,
+            Label = selected.Label ?? string.Empty
+        };
+        return true;
+    }
+
+    private static bool RemoveSelectedObjectUnlimited(SelectedWorldObject selected)
+    {
+        if (selected == null || selected.Component == null)
+        {
+            return false;
+        }
+
+        Destroy(selected.Component.gameObject);
+        return true;
+    }
+
+    private bool TryReturnSelectedObjectToInventory(SelectedWorldObject selected)
+    {
+        if (selected == null || selected.Component == null)
+        {
+            return false;
+        }
+
+        if (selected.Building != null)
+        {
+            return selected.Building.TryAddToInventory();
+        }
+
+        var tryAddMethod = selected.Component.GetType().GetMethods(AnyInstance)
+            .FirstOrDefault(method =>
+            {
+                if (!string.Equals(method.Name, "TryAddToInventory", StringComparison.Ordinal)) return false;
+                var parameters = method.GetParameters();
+                return parameters.Length == 0 || (parameters.Length == 1 && parameters[0].ParameterType == typeof(int));
+            });
+        if (tryAddMethod == null)
+        {
+            return false;
+        }
+
+        var parameters = tryAddMethod.GetParameters();
+        object? result;
+        if (parameters.Length == 0)
+        {
+            result = tryAddMethod.Invoke(selected.Component, null);
+        }
+        else
+        {
+            result = tryAddMethod.Invoke(selected.Component, new object[] { ResolveStackQuantity(selected.Component) });
+        }
+
+        return result is bool ok && ok;
+    }
+
+    private static int ResolveStackQuantity(MonoBehaviour component)
+    {
+        var quantityField = component.GetType().GetField("Quantity", AnyInstance);
+        if (quantityField?.GetValue(component) is int quantity && quantity > 0)
+        {
+            return quantity;
+        }
+
+        var quantityProperty = component.GetType().GetProperty("Quantity", AnyInstance);
+        if (quantityProperty?.GetValue(component, null) is int propertyQuantity && propertyQuantity > 0)
+        {
+            return propertyQuantity;
+        }
+
+        return 1;
+    }
+
 
     private bool TrySpawnClipboardEntry(SavingLoadingManager saving, ClipboardEntry entry, Vector3 playerPos, out GameObject spawned)
     {
         spawned = null!;
         var targetPos = playerPos + entry.RelativeOffset;
+        return TrySpawnClipboardEntryAtPosition(saving, entry, targetPos, out spawned);
+    }
+
+
+    private bool TrySpawnClipboardEntryAtPosition(SavingLoadingManager saving, ClipboardEntry entry, Vector3 targetPos, out GameObject spawned)
+    {
+        spawned = null!;
         var requiredId = entry.RequiredSavableObjectID != SavableObjectID.INVALID
             ? entry.RequiredSavableObjectID
             : entry.SavableObjectID;
@@ -388,13 +748,22 @@ public sealed partial class MinersBlueprint
 
         if (entry.SavableObjectID == building.SavableObjectID || building.Definition == null)
         {
-            return true;
+            if (entry.SavableObjectID == building.SavableObjectID)
+            {
+                return true;
+            }
+
+            Destroy(spawned);
+            spawned = null!;
+            return false;
         }
 
         var prefabs = building.Definition.BuildingPrefabs;
         if (prefabs == null || prefabs.Count <= 1)
         {
-            return true;
+            Destroy(spawned);
+            spawned = null!;
+            return false;
         }
 
         // Variant reconcile: place base item, then cycle variants until target id is reached.
@@ -428,7 +797,14 @@ public sealed partial class MinersBlueprint
             building = nextBuilding;
         }
 
-        return true;
+        if (building.SavableObjectID == entry.SavableObjectID)
+        {
+            return true;
+        }
+
+        Destroy(spawned);
+        spawned = null!;
+        return false;
     }
 
 
@@ -449,8 +825,34 @@ public sealed partial class MinersBlueprint
     }
 
 
-    private OccupiedClearResult TryClearOccupiedTarget(SavingLoadingManager saving, ClipboardEntry entry, Vector3 targetPos, HashSet<int> protectedPlacedIds)
+    private static Dictionary<SavableObjectID, int> BuildRequirements(List<UndoObjectSnapshot> entries)
     {
+        var required = new Dictionary<SavableObjectID, int>();
+        for (var i = 0; i < entries.Count; i++)
+        {
+            var id = entries[i].RequiredSavableObjectID != SavableObjectID.INVALID
+                ? entries[i].RequiredSavableObjectID
+                : entries[i].SavableObjectID;
+            if (required.TryGetValue(id, out var count))
+            {
+                required[id] = count + 1;
+            }
+            else
+            {
+                required[id] = 1;
+            }
+        }
+        return required;
+    }
+
+
+    private OccupiedClearResult TryClearOccupiedTarget(SavingLoadingManager saving, ClipboardEntry entry, Vector3 targetPos, HashSet<int> protectedPlacedIds, UndoTransaction undoTransaction)
+    {
+        if (!IsBuildingClipboardEntry(saving, entry))
+        {
+            return OccupiedClearResult.Empty;
+        }
+
         var clearedAny = false;
         const int maxPasses = 24;
         for (var pass = 0; pass < maxPasses; pass++)
@@ -474,6 +876,29 @@ public sealed partial class MinersBlueprint
             for (var i = 0; i < actionable.Count; i++)
             {
                 var existing = actionable[i];
+                if (undoTransaction.RemovedInstanceIds.Add(existing.GetInstanceID()))
+                {
+                    undoTransaction.RemovedObjects.Add(new UndoObjectSnapshot
+                    {
+                        SavableObjectID = existing.SavableObjectID,
+                        RequiredSavableObjectID = ResolveRequiredSavableId(existing),
+                        Position = existing.transform.position,
+                        Rotation = existing.transform.rotation,
+                        SupportsEnabled = existing.GetBuildingSupportsEnabled(),
+                        CustomData = existing.GetCustomSaveData() ?? string.Empty,
+                        Label = BuildObjectLabel(existing)
+                    });
+                }
+
+                if (_buildMode == BuildMode.Unlimited)
+                {
+                    clearedAny = true;
+                    removedThisPass++;
+                    protectedPlacedIds.Add(existing.GetInstanceID());
+                    Destroy(existing.gameObject);
+                    continue;
+                }
+
                 if (existing.TryAddToInventory())
                 {
                     clearedAny = true;
@@ -486,7 +911,7 @@ public sealed partial class MinersBlueprint
                 if (!_reportedInventoryFullOnReplace)
                 {
                     _reportedInventoryFullOnReplace = true;
-                    _toasts.Push("Cannot replace occupied object: inventory is full.", ToastType.Warning, duration: 3.8f);
+                    Notify("Cannot replace occupied object: inventory is full.", NotificationLevel.Warning, 3.8f, "Paste");
                 }
                 return OccupiedClearResult.Failed;
             }
@@ -521,6 +946,11 @@ public sealed partial class MinersBlueprint
         Vector3 targetPos,
         HashSet<int> protectedPlacedIds)
     {
+        if (!TryGetPrefabBuilding(saving, entry, out _))
+        {
+            return new List<BuildingObject>();
+        }
+
         if (TryBuildPlacementOverlapBoxesForEntry(saving, entry, targetPos, out var layerMask, out var placementBoxes))
         {
             var found = new HashSet<BuildingObject>();
@@ -557,17 +987,9 @@ public sealed partial class MinersBlueprint
         layerMask = default;
         placementBoxes = new List<PlacementOverlapBox>();
 
-        if (!TryGetPlacementPrefab(saving, entry, out var prefab))
+        if (!TryGetPrefabBuilding(saving, entry, out var prefabBuilding))
         {
             return false;
-        }
-        if (!prefab.TryGetComponent<BuildingObject>(out var prefabBuilding) || prefabBuilding == null)
-        {
-            prefabBuilding = prefab.GetComponentInChildren<BuildingObject>(includeInactive: true);
-            if (prefabBuilding == null)
-            {
-                return false;
-            }
         }
 
         var buildingManager = Singleton<BuildingManager>.Instance;
@@ -737,6 +1159,30 @@ public sealed partial class MinersBlueprint
     }
 
 
+    private static bool TryGetPrefabBuilding(SavingLoadingManager saving, ClipboardEntry entry, out BuildingObject building)
+    {
+        building = null!;
+        if (!TryGetPlacementPrefab(saving, entry, out var prefab))
+        {
+            return false;
+        }
+
+        if (prefab.TryGetComponent<BuildingObject>(out building) && building != null)
+        {
+            return true;
+        }
+
+        building = prefab.GetComponentInChildren<BuildingObject>(includeInactive: true);
+        return building != null;
+    }
+
+
+    private static bool IsBuildingClipboardEntry(SavingLoadingManager saving, ClipboardEntry entry)
+    {
+        return TryGetPrefabBuilding(saving, entry, out _);
+    }
+
+
     private string ResolveName(SavableObjectID id)
     {
         if (_nameByIdCache.TryGetValue(id, out var text) && !string.IsNullOrWhiteSpace(text))
@@ -747,10 +1193,25 @@ public sealed partial class MinersBlueprint
         var saving = Singleton<SavingLoadingManager>.Instance;
         if (saving != null)
         {
-            var prefab = saving.GetPrefab(id);
-            if (prefab != null && prefab.TryGetComponent<BuildingObject>(out var building))
+            if (TryGetPlacementPrefab(saving, new ClipboardEntry
+                {
+                    SavableObjectID = id,
+                    RequiredSavableObjectID = id
+                }, out var prefab))
             {
-                var resolved = BuildDefinitionName(building);
+                string resolved;
+                if (prefab.TryGetComponent<BuildingObject>(out var building) && building != null)
+                {
+                    resolved = BuildDefinitionName(building);
+                }
+                else if (TryGetInteractableName(prefab, out var interactableName))
+                {
+                    resolved = interactableName;
+                }
+                else
+                {
+                    resolved = prefab.name.Replace("(Clone)", string.Empty).Trim();
+                }
                 _nameByIdCache[id] = resolved;
                 return resolved;
             }
@@ -789,6 +1250,24 @@ public sealed partial class MinersBlueprint
             Mathf.FloorToInt(value.x),
             Mathf.FloorToInt(value.y),
             Mathf.FloorToInt(value.z));
+    }
+
+    private static int GetSliceCoordinate(Vector3Int cell, char axis)
+    {
+        switch (axis)
+        {
+            case 'X':
+                return cell.x;
+            case 'Z':
+                return cell.z;
+            default:
+                return cell.y;
+        }
+    }
+
+    private static string GetSliceLabel(int count)
+    {
+        return count == 1 ? "slice" : "slices";
     }
 
 

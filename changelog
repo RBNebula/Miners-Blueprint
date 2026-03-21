@@ -1,14 +1,83 @@
+2.0.0
+- Major workflow release for Miner's Blueprint
+- Expanded the mod from a selection/copy-paste helper into a broader building and world-editing toolkit
+- Added blueprint import/export, build modes, transforms, remove/cut workflows, undo, selection editing, improved notifications, and richer Chat Commands integration
+- Curated `/help mb` output while preserving dynamic autocomplete through the updated Chat Commands API
+
+1.1.0
+- Added blueprint export/import:
+  - `/mb export selection <FileName>` saves the current copied clipboard to `FileName.blueprint`
+  - `/mb export all <FileName>` saves all supported saveable world objects to `FileName.blueprint`
+  - `/mb import <FileName>` loads a `.blueprint` file back into the runtime clipboard and opens the ghost preview
+- Added build mode switching:
+  - `/mb mode normal` keeps inventory-gated placement
+  - `/mb mode unlimited` bypasses inventory checks and item consumption
+- Added disk-backed `.blueprint` sharing files under `BepInEx/config/MinersBlueprint/Blueprints`
+- Added world-anchored import behavior for `all` exports so they restore to the saved world position instead of the player position
+- Reworked action notifications into compact top-right popups with a quick fade-out
+- Fixed Chat Commands registration to use the correct `com.ChatCommands` plugin GUID
+- Added dynamic `/mb` autocomplete entries for discovered blueprint file names
+- Added exact blueprint path/directory reporting in export/import/list/rename flows
+- Added blueprint management commands:
+  - `/mb blueprints list`
+  - `/mb blueprints rename <CurrentFileName> <NewFileName>`
+  - `/mb blueprints delete <CurrentFileName>`
+  - `/mb confirm`
+- Added undo support for the latest paste/removal action:
+  - `/mb undo [Count]`
+- Changed paste to use adaptive staged slices on the axis with the largest span, with a `0.1s` delay between slices
+- Normalized the primary command surface:
+  - `/mb place`
+  - `/mb clear clipboard|ghost|selection|all`
+  - `/mb blueprints save selection|all`
+  - `/mb blueprints import`
+  - `/mb pos`
+  - `/mb size`
+  - direction aliases `n/s/e/w/u/d`
+- Added a tagged `/mb tool` pickaxe:
+  - left click sets pos1
+  - right click sets pos2
+  - middle click copies the current selection
+- Added green outline highlights for objects inside a completed selection
+- Removed placement animation experiments; staged placement is timing-only
+- Added support for selecting, exporting, importing, cutting, and removing supported saveable world items beyond buildings:
+  - tools
+  - pumpkins / `JackOLantern`
+  - sleds
+  - boxes
+  - similar `ISaveLoadableObject` world items
+- Added selection/world editing commands:
+  - `/mb cut`
+  - `/mb remove`
+  - `/mb shift <Direction> <Amount>`
+  - `/mb grow <Amount>`
+  - `/mb shrink <Amount>`
+  - `/mb expand <Direction> <Amount>`
+  - `/mb contract <Direction> <Amount>`
+- Added clipboard transform commands:
+  - `/mb rotate 90`
+  - `/mb rotate 180`
+  - `/mb rotate 270`
+  - `/mb mirror`
+  - `/mb stack <Count> <Direction> <Gap>`
+- Improved build metadata hygiene:
+  - version metadata aligned across `ModInfo.cs`, `.csproj`, docs
+  - build path override support via `MineMogulDir`, `MINE_MOGUL_DIR`, `MineMogulInstallDir`
+  - validation for MineMogul/BepInEx reference paths
+  - removed stale Harmony/Input System dependency drift
+- Refreshed `DirectoryOverview.md` so a new AI session can reconstruct the current project state from files alone
+
 0.1.1
-- Initial release as Miner's Blueprint.
+- Initial release as Miner's Blueprint
 - Added 3D selection flow:
-  - Key 1 sets start point from looked object/hit position.
-  - Key 2 sets end point and builds a green world-space selection box.
-- Added optional debug window (off by default) listing objects in current selection and clipboard counts.
+  - Key 1 sets start point from looked object/hit position
+  - Key 2 sets end point and builds a green world-space selection box
+- Added optional debug window listing objects in current selection and clipboard counts
 - Added clipboard copy/paste:
-  - Key 3 copies placed building objects in selection.
-  - Key 4 pastes copied objects relative to player position.
-- Added variant-aware paste support.
+  - Key 3 copies placed building objects in selection
+  - Key 4 pastes copied objects relative to player position
+- Added variant-aware paste support
 - Added inventory gate on paste:
-  - Requires matching building items (ToolBuilder stacks) in inventory.
-  - Blocks paste if missing items and shows exact missing counts popup.
-  - Consumes required items from inventory when paste succeeds.
+  - requires matching building items (`ToolBuilder` stacks) in inventory
+  - blocks paste if missing items and shows exact missing counts
+  - consumes required items from inventory when paste succeeds

@@ -5,23 +5,28 @@
     <Nullable>enable</Nullable>
     <AssemblyName>MinersBlueprint</AssemblyName>
     <RootNamespace>MinersBlueprint</RootNamespace>
+    <Version>2.0.0</Version>
+    <AssemblyVersion>2.0.0</AssemblyVersion>
+    <FileVersion>2.0.0</FileVersion>
+    <InformationalVersion>2.0.0</InformationalVersion>
   </PropertyGroup>
 
   <PropertyGroup>
+    <MineMogulDir Condition="'$(MineMogulDir)' == '' and '$(MINE_MOGUL_DIR)' != ''">$(MINE_MOGUL_DIR)</MineMogulDir>
+    <MineMogulDir Condition="'$(MineMogulDir)' == '' and '$(MineMogulInstallDir)' != ''">$(MineMogulInstallDir)</MineMogulDir>
     <MineMogulDir Condition="'$(MineMogulDir)' == ''">F:\SteamLibrary\steamapps\common\MineMogul</MineMogulDir>
     <MineMogulManagedDir>$(MineMogulDir)\MineMogul_Data\Managed</MineMogulManagedDir>
     <MineMogulBepInExCoreDir>$(MineMogulDir)\BepInEx\core</MineMogulBepInExCoreDir>
-    <MineMogulPluginsDir>$(MineMogulDir)\BepInEx\plugins</MineMogulPluginsDir>
-    <RbnModlibDir Condition="'$(RbnModlibDir)' == ''">$(MSBuildThisFileDirectory)..\GitRepos\RBN.Modlib\bin\Release\net472</RbnModlibDir>
   </PropertyGroup>
+
+  <Target Name="ValidateMineMogulDir" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(MineMogulManagedDir)')" Text="MineMogul managed directory not found. Set the MineMogulDir MSBuild property or the MINE_MOGUL_DIR/MineMogulInstallDir environment variable." />
+    <Error Condition="!Exists('$(MineMogulBepInExCoreDir)')" Text="MineMogul BepInEx core directory not found. Verify BepInEx is installed in the target MineMogul directory." />
+  </Target>
 
   <ItemGroup>
     <Reference Include="BepInEx">
       <HintPath>$(MineMogulBepInExCoreDir)\BepInEx.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="0Harmony">
-      <HintPath>$(MineMogulBepInExCoreDir)\0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Assembly-CSharp">
@@ -46,14 +51,6 @@
     </Reference>
     <Reference Include="UnityEngine.PhysicsModule">
       <HintPath>$(MineMogulManagedDir)\UnityEngine.PhysicsModule.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="Unity.InputSystem">
-      <HintPath>$(MineMogulManagedDir)\Unity.InputSystem.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="RBN.Modlib">
-      <HintPath>$(RbnModlibDir)\RBN.Modlib.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>

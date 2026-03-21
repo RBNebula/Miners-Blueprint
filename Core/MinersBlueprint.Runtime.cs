@@ -13,10 +13,13 @@ public sealed partial class MinersBlueprint
         }
 
         UpdateSelectionVisual();
+        ProcessNextPasteLayer();
         if (!CanProcessHotkeys())
         {
             return;
         }
+
+        UpdateSelectionToolInput();
 
         if (WasPressed(_toggleWindowKey))
         {
@@ -46,7 +49,7 @@ public sealed partial class MinersBlueprint
             }
             else
             {
-                PlaceGhostAtPlayerAnchor(showToast: true);
+                PlaceGhostAtPlayerAnchor(showMessage: true);
             }
         }
 

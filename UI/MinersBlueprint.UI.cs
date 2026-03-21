@@ -4,25 +4,19 @@ public sealed partial class MinersBlueprint
 {
     private void OnGUI()
     {
-        _toastLabelStyle ??= new GUIStyle(GUI.skin.label)
-        {
-            richText = true,
-            fontSize = 14,
-            wordWrap = true
-        };
         _popupTitleStyle ??= new GUIStyle(GUI.skin.label)
         {
-            fontSize = 17,
+            fontSize = 13,
             normal = { textColor = Color.white }
         };
         _popupBodyStyle ??= new GUIStyle(GUI.skin.label)
         {
-            fontSize = 14,
+            fontSize = 12,
             wordWrap = true,
+            clipping = TextClipping.Clip,
             normal = { textColor = new Color(0.93f, 0.95f, 0.97f, 0.98f) }
         };
 
-        _toasts.Draw(_toastLabelStyle);
         DrawPopupOverlay();
 
         if (!_showDebugWindow) return;
@@ -35,19 +29,26 @@ public sealed partial class MinersBlueprint
         if (Time.unscaledTime >= _popupUntilTime) return;
         if (string.IsNullOrWhiteSpace(_popupBody) && string.IsNullOrWhiteSpace(_popupTitle)) return;
 
-        var width = Mathf.Min(560f, Screen.width - 40f);
-        var rect = new Rect((Screen.width - width) * 0.5f, Mathf.Max(50f, Screen.height * 0.22f), width, 210f);
-        UiDrawUtils.DrawSolidRect(rect, new Color(0.03f, 0.05f, 0.07f, 0.94f));
-        UiDrawUtils.DrawSolidRect(new Rect(rect.x, rect.y, rect.width, 3f), new Color(0.95f, 0.73f, 0.25f, 0.96f));
-        UiDrawUtils.DrawSolidRect(new Rect(rect.x + 12f, rect.y + 42f, rect.width - 24f, 1f), new Color(1f, 1f, 1f, 0.08f));
+        var remaining = _popupUntilTime - Time.unscaledTime;
+        var fadeAlpha = remaining <= PopupFadeDuration
+            ? Mathf.Clamp01(remaining / PopupFadeDuration)
+            : 1f;
+        if (fadeAlpha <= 0.001f) return;
 
-        GUI.Label(new Rect(rect.x + 14f, rect.y + 12f, rect.width - 28f, 26f), _popupTitle, _popupTitleStyle);
-        GUI.Label(new Rect(rect.x + 14f, rect.y + 50f, rect.width - 28f, rect.height - 88f), _popupBody, _popupBodyStyle);
+        var width = Mathf.Min(360f, Screen.width - 24f);
+        var height = 74f;
+        var rect = new Rect(Screen.width - width - 12f, 12f, width, height);
+        var background = new Color(0.03f, 0.05f, 0.07f, 0.90f * fadeAlpha);
+        var accent = new Color(_popupAccentColor.r, _popupAccentColor.g, _popupAccentColor.b, _popupAccentColor.a * fadeAlpha);
+        UiDrawUtils.DrawSolidRect(rect, background);
+        UiDrawUtils.DrawSolidRect(new Rect(rect.x, rect.y, 4f, rect.height), accent);
+        UiDrawUtils.DrawSolidRect(new Rect(rect.x + 12f, rect.y + 26f, rect.width - 24f, 1f), new Color(1f, 1f, 1f, 0.06f * fadeAlpha));
 
-        if (GUI.Button(new Rect(rect.x + rect.width - 88f, rect.y + rect.height - 34f, 74f, 24f), "Close"))
-        {
-            _popupUntilTime = 0f;
-        }
+        var previousColor = GUI.color;
+        GUI.color = new Color(1f, 1f, 1f, fadeAlpha);
+        GUI.Label(new Rect(rect.x + 16f, rect.y + 6f, rect.width - 24f, 18f), _popupTitle, _popupTitleStyle);
+        GUI.Label(new Rect(rect.x + 16f, rect.y + 30f, rect.width - 24f, 34f), _popupBody, _popupBodyStyle);
+        GUI.color = previousColor;
     }
 
 

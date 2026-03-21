@@ -30,18 +30,12 @@ public sealed partial class MinersBlueprint
         if (registerShortcut != null)
         {
             var registered = 0;
-            registered += RegisterShortcutRebind(registerShortcut, "Miner's Blueprint", "Set Selection Start", _setStartKey, DefaultSetStartShortcut);
-            registered += RegisterShortcutRebind(registerShortcut, "Miner's Blueprint", "Set Selection End", _setEndKey, DefaultSetEndShortcut);
-            registered += RegisterShortcutRebind(registerShortcut, "Miner's Blueprint", "Copy Selection", _copyKey, DefaultCopyShortcut);
-            registered += RegisterShortcutRebind(registerShortcut, "Miner's Blueprint", "Place Ghost / Confirm Ghost Placement", _pasteKey, DefaultPasteShortcut);
-            registered += RegisterShortcutRebind(registerShortcut, "Miner's Blueprint", "Toggle/Remove Ghost", _toggleGhostPreviewKey, DefaultToggleGhostPreviewShortcut);
             registered += RegisterShortcutRebind(registerShortcut, "Miner's Blueprint", "Ghost Move X-", _ghostMoveXMinusKey, new KeyboardShortcut(DefaultGhostMoveXMinusKey));
             registered += RegisterShortcutRebind(registerShortcut, "Miner's Blueprint", "Ghost Move X+", _ghostMoveXPlusKey, new KeyboardShortcut(DefaultGhostMoveXPlusKey));
             registered += RegisterShortcutRebind(registerShortcut, "Miner's Blueprint", "Ghost Move Z-", _ghostMoveZMinusKey, new KeyboardShortcut(DefaultGhostMoveZMinusKey));
             registered += RegisterShortcutRebind(registerShortcut, "Miner's Blueprint", "Ghost Move Z+", _ghostMoveZPlusKey, new KeyboardShortcut(DefaultGhostMoveZPlusKey));
             registered += RegisterShortcutRebind(registerShortcut, "Miner's Blueprint", "Ghost Elevation -", _ghostMoveYMinusKey, new KeyboardShortcut(DefaultGhostMoveYMinusKey));
             registered += RegisterShortcutRebind(registerShortcut, "Miner's Blueprint", "Ghost Elevation +", _ghostMoveYPlusKey, new KeyboardShortcut(DefaultGhostMoveYPlusKey));
-            registered += RegisterShortcutRebind(registerShortcut, "Miner's Blueprint", "Toggle Debug Window", _toggleWindowKey, new KeyboardShortcut(DefaultToggleWindowKey));
 
             if (registered > 0)
             {
@@ -73,18 +67,12 @@ public sealed partial class MinersBlueprint
         }
 
         var legacyRegistered = 0;
-        legacyRegistered += RegisterLegacyRebind(registerLegacy, "Miner's Blueprint", "Set Selection Start", _setStartKey, DefaultSetStartShortcut);
-        legacyRegistered += RegisterLegacyRebind(registerLegacy, "Miner's Blueprint", "Set Selection End", _setEndKey, DefaultSetEndShortcut);
-        legacyRegistered += RegisterLegacyRebind(registerLegacy, "Miner's Blueprint", "Copy Selection", _copyKey, DefaultCopyShortcut);
-        legacyRegistered += RegisterLegacyRebind(registerLegacy, "Miner's Blueprint", "Place Ghost / Confirm Ghost Placement", _pasteKey, DefaultPasteShortcut);
-        legacyRegistered += RegisterLegacyRebind(registerLegacy, "Miner's Blueprint", "Toggle/Remove Ghost", _toggleGhostPreviewKey, DefaultToggleGhostPreviewShortcut);
         legacyRegistered += RegisterLegacyRebind(registerLegacy, "Miner's Blueprint", "Ghost Move X-", _ghostMoveXMinusKey, new KeyboardShortcut(DefaultGhostMoveXMinusKey));
         legacyRegistered += RegisterLegacyRebind(registerLegacy, "Miner's Blueprint", "Ghost Move X+", _ghostMoveXPlusKey, new KeyboardShortcut(DefaultGhostMoveXPlusKey));
         legacyRegistered += RegisterLegacyRebind(registerLegacy, "Miner's Blueprint", "Ghost Move Z-", _ghostMoveZMinusKey, new KeyboardShortcut(DefaultGhostMoveZMinusKey));
         legacyRegistered += RegisterLegacyRebind(registerLegacy, "Miner's Blueprint", "Ghost Move Z+", _ghostMoveZPlusKey, new KeyboardShortcut(DefaultGhostMoveZPlusKey));
         legacyRegistered += RegisterLegacyRebind(registerLegacy, "Miner's Blueprint", "Ghost Elevation -", _ghostMoveYMinusKey, new KeyboardShortcut(DefaultGhostMoveYMinusKey));
         legacyRegistered += RegisterLegacyRebind(registerLegacy, "Miner's Blueprint", "Ghost Elevation +", _ghostMoveYPlusKey, new KeyboardShortcut(DefaultGhostMoveYPlusKey));
-        legacyRegistered += RegisterLegacyRebind(registerLegacy, "Miner's Blueprint", "Toggle Debug Window", _toggleWindowKey, new KeyboardShortcut(DefaultToggleWindowKey));
 
         if (legacyRegistered > 0)
         {

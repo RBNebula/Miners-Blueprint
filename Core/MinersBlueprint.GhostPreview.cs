@@ -6,11 +6,11 @@ public sealed partial class MinersBlueprint
     {
         if (_ghostPreviewVisible)
         {
-            HideGhostPreview(showToast: true);
+            HideGhostPreview(showMessage: true);
             return;
         }
 
-        PlaceGhostAtPlayerAnchor(showToast: true);
+        PlaceGhostAtPlayerAnchor(showMessage: true);
     }
 
 
@@ -21,34 +21,34 @@ public sealed partial class MinersBlueprint
         {
             return;
         }
-        ShowGhostPreviewAtAnchor(_ghostPreviewAnchor, showToast: false);
+        ShowGhostPreviewAtAnchor(_ghostPreviewAnchor, showMessage: false);
     }
 
 
-    private void PlaceGhostAtPlayerAnchor(bool showToast)
+    private void PlaceGhostAtPlayerAnchor(bool showMessage)
     {
         var player = UnityEngine.Object.FindAnyObjectByType<PlayerController>();
         if (player == null)
         {
-            if (showToast)
+            if (showMessage)
             {
-                _toasts.Push("Player not found; cannot place ghost.", ToastType.Warning);
+                Notify("Player not found; cannot place ghost.", NotificationLevel.Warning, title: "Ghost");
             }
             return;
         }
 
         var anchor = SnapPasteAnchor(player.transform.position);
-        ShowGhostPreviewAtAnchor(anchor, showToast);
+        ShowGhostPreviewAtAnchor(anchor, showMessage);
     }
 
 
-    private void ShowGhostPreviewAtAnchor(Vector3 anchor, bool showToast)
+    private void ShowGhostPreviewAtAnchor(Vector3 anchor, bool showMessage)
     {
         if (_clipboard == null || _clipboard.Entries.Count == 0)
         {
-            if (showToast)
+            if (showMessage)
             {
-                _toasts.Push("Clipboard is empty. Copy first.", ToastType.Warning);
+                Notify("Clipboard is empty. Copy first.", NotificationLevel.Warning, title: "Ghost");
             }
             _ghostPreviewVisible = false;
             DestroyGhostPreviewVisuals();
@@ -58,9 +58,9 @@ public sealed partial class MinersBlueprint
         var saving = Singleton<SavingLoadingManager>.Instance;
         if (saving == null)
         {
-            if (showToast)
+            if (showMessage)
             {
-                _toasts.Push("SavingLoadingManager missing; cannot show ghost preview.", ToastType.Warning);
+                Notify("SavingLoadingManager missing; cannot show ghost preview.", NotificationLevel.Warning, title: "Ghost");
             }
             _ghostPreviewVisible = false;
             DestroyGhostPreviewVisuals();
@@ -100,9 +100,9 @@ public sealed partial class MinersBlueprint
         {
             _ghostPreviewVisible = false;
             DestroyGhostPreviewVisuals();
-            if (showToast)
+            if (showMessage)
             {
-                _toasts.Push("No valid prefabs for ghost preview.", ToastType.Warning);
+                Notify("No valid prefabs for ghost preview.", NotificationLevel.Warning, title: "Ghost");
             }
             return;
         }
@@ -111,21 +111,21 @@ public sealed partial class MinersBlueprint
         _ghostPreviewAnchor = anchor;
         _nextGhostBlockerRefreshTime = 0f;
         RefreshGhostBlockerPreview(force: true);
-        if (showToast)
+        if (showMessage)
         {
-            _toasts.Push($"Ghost anchor placed ({spawned} objects). Use arrows / +/- to move.", ToastType.Success);
+            Notify($"Ghost anchor placed ({spawned} objects). Use arrows / +/- to move.", NotificationLevel.Success, title: "Ghost");
         }
     }
 
 
-    private void HideGhostPreview(bool showToast = false)
+    private void HideGhostPreview(bool showMessage = false)
     {
         if (!_ghostPreviewVisible && _ghostPreviewInstances.Count == 0) return;
         _ghostPreviewVisible = false;
         DestroyGhostPreviewVisuals();
-        if (showToast)
+        if (showMessage)
         {
-            _toasts.Push("Ghost preview hidden.", ToastType.Success);
+            Notify("Ghost preview hidden.", NotificationLevel.Success, title: "Ghost");
         }
     }
 

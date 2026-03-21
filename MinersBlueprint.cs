@@ -21,9 +21,10 @@ public sealed partial class MinersBlueprint : BaseUnityPlugin
         _toggleWindowKey = Config.Bind("Input", "ToggleDebugWindowKey", new KeyboardShortcut(DefaultToggleWindowKey), "Toggle debug window visibility (off by default).");
         _lookDistance = Config.Bind("Selection", "LookDistance", 80f, "Raycast distance used to pick selection points.");
         _cellSize = Config.Bind("Selection", "CellSize", 1f, "Grid cell size used to expand selection to outside cell edges.");
+        _buildModeConfig = Config.Bind("General", "BuildMode", BuildMode.Normal.ToString(), "Build mode: Normal requires inventory items, Unlimited bypasses inventory checks and consumption.");
+        _buildMode = ParseBuildMode(_buildModeConfig.Value);
+        _buildModeConfig.Value = _buildMode.ToString();
 
-        _toasts.MaxToasts = 8;
-        _toasts.DefaultDuration = 3.2f;
         SetupSelectionRenderer();
         _rebindRegistered = TryRegisterRebindKeybinds();
         _nextRebindAttemptTime = Time.unscaledTime + 1f;
@@ -52,6 +53,12 @@ public sealed partial class MinersBlueprint : BaseUnityPlugin
         {
             Destroy(_selectionRoot);
             _selectionRoot = null;
+        }
+        DestroySelectionHighlightVisuals();
+        if (_selectionHighlightLineMaterial != null)
+        {
+            Destroy(_selectionHighlightLineMaterial);
+            _selectionHighlightLineMaterial = null;
         }
         if (_lineMaterial != null)
         {

@@ -53,5 +53,6 @@ CodeCoverage/
 TestResult.xml
 nunit-*.xml
 
-# Local branding/source assets not for release
+# Local assets
 Branding/
+DirectoryOverview.md
